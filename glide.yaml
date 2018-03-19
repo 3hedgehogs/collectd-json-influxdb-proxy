@@ -5,10 +5,8 @@ owners:
   - name: Piotr Roszatycki
     email: piotr.roszatycki@gmail.com
 import:
-  - package: github.com/influxdata/influxdb
-    version: ^1.5.0
-    subpackages:
-      - client/v2
+  - package: github.com/influxdata/influxdb/client/v2
+    version: master
   - package: github.com/go-siris/siris
     version: ^7.4.0
     subpackages:
