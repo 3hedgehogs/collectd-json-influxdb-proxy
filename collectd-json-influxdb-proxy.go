@@ -98,7 +98,7 @@ func main() {
 			}
 
 			s, ms := math.Modf(v.Time)
-			t := time.Unix(int64(s), int64(ms*1e6))
+			t := time.Unix(int64(s), int64(ms*1e9))
 
 			pt, err := client.NewPoint(
 				v.Plugin,
