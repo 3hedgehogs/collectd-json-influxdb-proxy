@@ -11,6 +11,6 @@ install:
 
 script:
   - glide install
-  - GO15VENDOREXPERIMENT=1 go build .
+  - go build .
   - go vet .
   - golint .
