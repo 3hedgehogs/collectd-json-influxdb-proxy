@@ -15,7 +15,7 @@ Translate collectd JSON HTTP request to Influx Data line protocol
 
 ```console
 glide up
-go build *.go
+go build .
 ```
 
 ## Configuration for collectd
