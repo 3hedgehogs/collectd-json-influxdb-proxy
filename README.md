@@ -9,12 +9,12 @@ Translate collectd JSON HTTP request to Influx Data line protocol
 ## Requirements
 
 * Go >= 1.9
-* Glide
+* [Glide](https://github.com/Masterminds/glide)
 
 ## Compilation
 
 ```console
-glide up
+glide install
 go build .
 ```
 
