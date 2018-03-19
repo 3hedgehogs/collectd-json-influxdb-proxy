@@ -1,5 +1,9 @@
 # collectd-json-influxdb-proxy
 
+<!-- markdownlint-disable MD013 -->
+[![Build Status](https://secure.travis-ci.org/dex4er/collectd-json-influxdb-proxy.svg)](http://travis-ci.org/dex4er/collectd-json-influxdb-proxy)
+<!-- markdownlint-enable MD013 -->
+
 Translate collectd JSON HTTP request to Influx Data line protocol
 
 ## Requirements
