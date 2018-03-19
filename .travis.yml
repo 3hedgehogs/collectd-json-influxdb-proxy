@@ -10,6 +10,7 @@ install:
   - go get github.com/golang/lint/golint
 
 script:
+  - glide update
   - glide install
   - go build .
   - go vet .
