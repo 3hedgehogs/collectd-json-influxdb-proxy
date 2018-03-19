@@ -3,12 +3,14 @@ language: go
 go:
   - 1.9.x
 
+go_import_path: github.com/dex4er/collectd-json-influxdb-proxy
+
 install:
   - go get github.com/Masterminds/glide
   - go get github.com/golang/lint/golint
 
 script:
   - glide install
-  - GO15VENDOREXPERIMENT=1 go build *.go
+  - GO15VENDOREXPERIMENT=1 go build .
   - go vet .
   - golint .
