@@ -3,7 +3,7 @@ Description=Translate collectd JSON HTTP request to Influx Data line protocol
 After=network.target
 
 [Service]
-Type=simple
+Type=notify
 ExecStart=/opt/collectd-json-influxdb-proxy/collectd-json-influxdb-proxy
 
 [Install]

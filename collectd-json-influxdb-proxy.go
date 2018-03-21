@@ -1,9 +1,12 @@
 package main
 
 import (
+	stdContext "context"
 	"log"
 	"math"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-siris/middleware-logger"
@@ -11,6 +14,8 @@ import (
 	"github.com/go-siris/siris/context"
 
 	client "github.com/influxdata/influxdb/client/v2"
+
+	"github.com/coreos/go-systemd/daemon"
 )
 
 const (
@@ -54,6 +59,7 @@ func main() {
 	defer c.Close()
 
 	app := siris.New()
+	siris.WithoutBanner(app)
 
 	requestLogger := logger.New()
 	app.Use(requestLogger)
@@ -125,5 +131,25 @@ func main() {
 		ctx.JSON(response)
 	})
 
+	// On signal, gracefully shut down the server and wait 5
+	// seconds for current connections to stop.
+	done := make(chan struct{})
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, os.Kill, syscall.SIGTERM)
+	go func() {
+		<-quit
+		log.Print("server is shutting down")
+		ctx, cancel := stdContext.WithTimeout(stdContext.Background(), 5*time.Second)
+		defer cancel()
+		if err := app.Shutdown(ctx); err != nil {
+			log.Fatalf("cannot gracefully shut down the server: %s", err)
+		}
+		close(done)
+	}()
+
+	daemon.SdNotify(false, "READY=1")
 	app.Run(siris.Addr(addr), siris.WithCharset("UTF-8"))
+
+	// Wait for existing connections before exiting.
+	<-done
 }
