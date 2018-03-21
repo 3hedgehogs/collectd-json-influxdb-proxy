@@ -9,13 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/coreos/go-systemd/daemon"
+
 	"github.com/go-siris/middleware-logger"
 	"github.com/go-siris/siris"
 	"github.com/go-siris/siris/context"
 
 	client "github.com/influxdata/influxdb/client/v2"
-
-	"github.com/coreos/go-systemd/daemon"
 )
 
 const (
