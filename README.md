@@ -48,6 +48,7 @@ curl http://localhost:8080/debug/vars
 
 ## Copyright
 
+(c) 2018 Serguei Poliakov <mailto:sergey.poliakov@gmail.com> MIT
 (c) 2018 Piotr Roszatycki <mailto:piotr.roszatycki@gmail.com> MIT
 
 Based on previous work
