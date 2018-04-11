@@ -37,6 +37,15 @@ go build .
 ./collectd-json-influxdb-proxy
 ```
 
+## Example request
+
+```console
+curl -H "Content-Type: application/json" -X POST -d '[{"values":  [1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance": "0","type":"cpu", "type_instance":"idle"}]' http://localhost:5826/
+curl http://localhost:8080/debug/vars
+```
+
+
+
 ## Copyright
 
 (c) 2018 Piotr Roszatycki <mailto:piotr.roszatycki@gmail.com> MIT

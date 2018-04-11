@@ -2,26 +2,30 @@ package main
 
 import (
 	stdContext "context"
+	"expvar"
+	"flag"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/coreos/go-systemd/daemon"
 
-	"github.com/go-siris/middleware-logger"
-	"github.com/go-siris/siris"
-	"github.com/go-siris/siris/context"
+	"github.com/gin-gonic/gin"
+	"github.com/golang/glog"
+	"github.com/szuecs/gin-glog"
 
 	client "github.com/influxdata/influxdb/client/v2"
 )
 
 const (
-	influxDB   = "collectd"
-	influxURL  = "http://localhost:8086/"
-	serverAddr = ":5826"
+	influxDBdefault  = "collectd"
+	influxURLdefault = "http://localhost:8086/"
+	serverAddr       = ":5826"
 )
 
 // ValueLists export
@@ -43,40 +47,43 @@ type Response struct {
 }
 
 func main() {
-	var addr string
-	if len(os.Args) > 1 {
-		addr = os.Args[1]
-	} else {
-		addr = serverAddr
-	}
+
+	addr := flag.String("address", serverAddr,
+		"server address")
+	debugserver := flag.String("expvar_server", "",
+		"server for exposer variables (empty to disable)")
+	influxURL := flag.String("influxurl", influxURLdefault,
+		"Influx URL")
+	influxDB := flag.String("influxdb", influxDBdefault,
+		"Influx DB")
+
+	flag.Parse()
 
 	c, err := client.NewHTTPClient(client.HTTPConfig{
-		Addr: influxURL,
+		Addr: *influxURL,
 	})
 	if err != nil {
 		log.Fatalln("Error creating InfluxDB Client: ", err.Error())
 	}
 	defer c.Close()
 
-	app := siris.New()
-	siris.WithoutBanner(app)
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.Default()
+	router.Use(ginglog.Logger(3 * time.Second))
+	router.Use(gin.Recovery())
 
-	requestLogger := logger.New()
-	app.Use(requestLogger)
-
-	app.Post("/", func(ctx context.Context) {
+	router.POST("/", func(ctx *gin.Context) {
 		var valueLists ValueLists
 
-		err := ctx.ReadJSON(&valueLists)
-
+		err := ctx.ShouldBindJSON(&valueLists)
 		if err != nil {
-			ctx.Values().Set("error", err.Error())
-			ctx.StatusCode(siris.StatusInternalServerError)
+			ctx.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+			//ctx.Abort()
 			return
 		}
 
 		bp, _ := client.NewBatchPoints(client.BatchPointsConfig{
-			Database: influxDB,
+			Database: *influxDB,
 		})
 
 		for _, v := range valueLists {
@@ -113,7 +120,7 @@ func main() {
 				t,
 			)
 			if err != nil {
-				app.Logger().Error(err.Error())
+				glog.Error(err.Error())
 				continue
 			}
 
@@ -122,14 +129,38 @@ func main() {
 
 		err = c.Write(bp)
 		if err != nil {
-			ctx.Values().Set("error", err.Error())
-			ctx.StatusCode(siris.StatusInternalServerError)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+			//ctx.Abort()
 			return
 		}
 
 		response := Response{}
-		ctx.JSON(response)
+		ctx.JSON(http.StatusOK, response)
+		return
 	})
+
+	if *debugserver != "" {
+		numGo := expvar.NewInt("runtime.goroutines")
+		go func() {
+			glog.Fatalf("Start debug server: %s", http.ListenAndServe(*debugserver, nil))
+		}()
+		go func() {
+			tick := time.NewTicker(1 * time.Second)
+			for {
+				select {
+				case <-tick.C:
+					numGo.Set(int64(runtime.NumGoroutine()))
+				}
+			}
+		}()
+	}
+
+	srv := &http.Server{
+		Addr:         *addr,
+		Handler:      router,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 
 	// On signal, gracefully shut down the server and wait 5
 	// seconds for current connections to stop.
@@ -138,17 +169,19 @@ func main() {
 	signal.Notify(quit, os.Interrupt, os.Kill, syscall.SIGTERM)
 	go func() {
 		<-quit
-		log.Print("server is shutting down")
+		log.Print("Server is shutting down.")
 		ctx, cancel := stdContext.WithTimeout(stdContext.Background(), 5*time.Second)
 		defer cancel()
-		if err := app.Shutdown(ctx); err != nil {
+		if err := srv.Shutdown(ctx); err != nil {
 			log.Fatalf("cannot gracefully shut down the server: %s", err)
 		}
 		close(done)
 	}()
 
 	daemon.SdNotify(false, "READY=1")
-	app.Run(siris.Addr(addr), siris.WithCharset("UTF-8"))
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("listen: %s\n", err)
+	}
 
 	// Wait for existing connections before exiting.
 	<-done
