@@ -50,7 +50,7 @@ curl http://localhost:5826/debug/vars
 (c) 2018 Serguei Poliakov <mailto:serguei.poliakov@gmail.com> MIT  
 (c) 2018 Piotr Roszatycki <mailto:piotr.roszatycki@gmail.com> MIT
 
-Forked from
-<https://github.com/dex4er/collectd-json-influxdb-proxy/>
-Based on
-<https://github.com/dex4er/perl-collectd-json-influxdb-proxy>
+Forked from  
+<https://github.com/dex4er/collectd-json-influxdb-proxy/>  
+Based on  
+<https://github.com/dex4er/perl-collectd-json-influxdb-proxy>  
