@@ -1,7 +1,7 @@
 # collectd-json-influxdb-proxy
 
 <!-- markdownlint-disable MD013 -->
-[![Build Status](https://secure.travis-ci.org/dex4er/collectd-json-influxdb-proxy.svg)](http://travis-ci.org/dex4er/collectd-json-influxdb-proxy)
+[![Build Status](https://secure.travis-ci.org/3hedgehogs/collectd-json-influxdb-proxy.svg)](http://travis-ci.org/3hedgehogs/collectd-json-influxdb-proxy)
 <!-- markdownlint-enable MD013 -->
 
 Translate collectd JSON HTTP request to Influx Data line protocol
@@ -9,12 +9,11 @@ Translate collectd JSON HTTP request to Influx Data line protocol
 ## Requirements
 
 * Go >= 1.9
-* [Glide](https://github.com/Masterminds/glide)
 
 ## Compilation
 
 ```console
-glide install
+dep ensure
 go build .
 ```
 
@@ -41,15 +40,17 @@ go build .
 
 ```console
 curl -H "Content-Type: application/json" -X POST -d '[{"values":  [1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance": "0","type":"cpu", "type_instance":"idle"}]' http://localhost:5826/
-curl http://localhost:8080/debug/vars
+curl http://localhost:5826/debug/vars
 ```
 
 
 
 ## Copyright
 
-(c) 2018 Serguei Poliakov <mailto:sergey.poliakov@gmail.com> MIT  
+(c) 2018 Serguei Poliakov <mailto:serguei.poliakov@gmail.com> MIT  
 (c) 2018 Piotr Roszatycki <mailto:piotr.roszatycki@gmail.com> MIT
 
-Based on previous work
+Forked from
+<https://github.com/dex4er/collectd-json-influxdb-proxy/>
+Based on
 <https://github.com/dex4er/perl-collectd-json-influxdb-proxy>

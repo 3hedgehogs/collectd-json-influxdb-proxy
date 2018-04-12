@@ -2,9 +2,8 @@ package main
 
 import (
 	stdContext "context"
-	"expvar"
+	stdExpvar "expvar"
 	"flag"
-	"log"
 	"math"
 	"net/http"
 	"os"
@@ -15,9 +14,9 @@ import (
 
 	"github.com/coreos/go-systemd/daemon"
 
+	"github.com/gin-contrib/expvar"
 	"github.com/gin-gonic/gin"
-	"github.com/golang/glog"
-	"github.com/szuecs/gin-glog"
+	"github.com/rs/zerolog"
 
 	client "github.com/influxdata/influxdb/client/v2"
 )
@@ -46,12 +45,38 @@ type ValueLists []struct {
 type Response struct {
 }
 
+func reqLogger(log zerolog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		t := time.Now()
+
+		// process request
+		c.Next()
+
+		latency := time.Since(t)
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+		r := c.Request
+
+		log.Info().
+			Str("method", method).
+			Str("url", r.URL.String()).
+			Int("status", statusCode).
+			Int64("size", r.ContentLength).
+			Str("ip", clientIP).
+			Dur("latency", latency).
+			Msgf("%s", c.Errors.String())
+	}
+}
+
 func main() {
 
 	addr := flag.String("address", serverAddr,
 		"server address")
-	debugserver := flag.String("expvar_server", "",
-		"server for exposer variables (empty to disable)")
+	debugserver := flag.Bool("expvar_server", false,
+		"start server for exposer variables")
+	logRequests := flag.Bool("logrequests", false,
+		"logging every request to the server")
 	influxURL := flag.String("influxurl", influxURLdefault,
 		"Influx URL")
 	influxDB := flag.String("influxdb", influxDBdefault,
@@ -59,18 +84,27 @@ func main() {
 
 	flag.Parse()
 
+	host, _ := os.Hostname()
+	log := zerolog.New(os.Stdout).With().
+		Timestamp().
+		Str("app", "collectd-json-influxdb-proxy").
+		Str("host", host).
+		Logger()
+
 	c, err := client.NewHTTPClient(client.HTTPConfig{
 		Addr: *influxURL,
 	})
 	if err != nil {
-		log.Fatalln("Error creating InfluxDB Client: ", err.Error())
+		log.Fatal().Err(err).Msg("Error creating InfluxDB Client")
 	}
 	defer c.Close()
 
 	gin.SetMode(gin.ReleaseMode)
-	router := gin.Default()
-	router.Use(ginglog.Logger(3 * time.Second))
+	router := gin.New()
 	router.Use(gin.Recovery())
+	if *logRequests {
+		router.Use(reqLogger(log))
+	}
 
 	router.POST("/", func(ctx *gin.Context) {
 		var valueLists ValueLists
@@ -78,7 +112,9 @@ func main() {
 		err := ctx.ShouldBindJSON(&valueLists)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
-			//ctx.Abort()
+			log.Info().
+				Err(err).
+				Msg(err.Error())
 			return
 		}
 
@@ -120,7 +156,9 @@ func main() {
 				t,
 			)
 			if err != nil {
-				glog.Error(err.Error())
+				log.Info().
+					Err(err).
+					Msg(err.Error())
 				continue
 			}
 
@@ -130,7 +168,9 @@ func main() {
 		err = c.Write(bp)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-			//ctx.Abort()
+			log.Info().
+				Err(err).
+				Msg(err.Error())
 			return
 		}
 
@@ -139,11 +179,9 @@ func main() {
 		return
 	})
 
-	if *debugserver != "" {
-		numGo := expvar.NewInt("runtime.goroutines")
-		go func() {
-			glog.Fatalf("Start debug server: %s", http.ListenAndServe(*debugserver, nil))
-		}()
+	if *debugserver {
+		numGo := stdExpvar.NewInt("runtime.goroutines")
+		router.GET("/debug/vars", expvar.Handler())
 		go func() {
 			tick := time.NewTicker(1 * time.Second)
 			for {
@@ -169,18 +207,23 @@ func main() {
 	signal.Notify(quit, os.Interrupt, os.Kill, syscall.SIGTERM)
 	go func() {
 		<-quit
-		log.Print("Server is shutting down.")
+		log.Info().
+			Msg("Server is shutting down.")
 		ctx, cancel := stdContext.WithTimeout(stdContext.Background(), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
-			log.Fatalf("cannot gracefully shut down the server: %s", err)
+			log.Fatal().
+				Err(err).
+				Msg("Cannot gracefully shut down the server")
 		}
 		close(done)
 	}()
 
 	daemon.SdNotify(false, "READY=1")
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("listen: %s\n", err)
+		log.Fatal().
+			Err(err).
+			Msg("Start server listener")
 	}
 
 	// Wait for existing connections before exiting.
