@@ -69,6 +69,77 @@ func reqLogger(log zerolog.Logger) gin.HandlerFunc {
 	}
 }
 
+func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB string) (b client.BatchPoints, e error) {
+
+	var valueLists ValueLists
+	err := ctx.ShouldBindJSON(&valueLists)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		log.Info().
+			Err(err).
+			Msg(err.Error())
+		return nil, err
+	}
+
+	bp, _ := client.NewBatchPoints(client.BatchPointsConfig{
+		Database: influxDB,
+	})
+
+	for _, v := range valueLists {
+
+		tags := map[string]string{}
+
+		if v.Host != "" {
+			tags["host"] = v.Host
+		}
+		if v.PluginInstance != "" {
+			tags["plugin_instance"] = v.PluginInstance
+		}
+		if v.Type != "" {
+			tags["type"] = v.Type
+		}
+		if v.TypeInstance != "" {
+			tags["type_instance"] = v.TypeInstance
+		}
+
+		fields := map[string]interface{}{}
+
+		for n, vv := range v.Values {
+			name := v.DsNames[n]
+			fields[name] = vv
+		}
+
+		s, ms := math.Modf(v.Time)
+		t := time.Unix(int64(s), int64(ms*1e9))
+
+		pt, err := client.NewPoint(
+			v.Plugin,
+			tags,
+			fields,
+			t,
+		)
+		if err != nil {
+			log.Info().
+				Err(err).
+				Msg(err.Error())
+			continue
+		}
+
+		bp.AddPoint(pt)
+	}
+
+	err = c.Write(bp)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
+		log.Info().
+			Err(err).
+			Msg(err.Error())
+		return bp, err
+	}
+
+	return bp, nil
+}
+
 func main() {
 
 	addr := flag.String("address", serverAddr,
@@ -107,73 +178,7 @@ func main() {
 	}
 
 	router.POST("/", func(ctx *gin.Context) {
-		var valueLists ValueLists
-
-		err := ctx.ShouldBindJSON(&valueLists)
-		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
-			log.Info().
-				Err(err).
-				Msg(err.Error())
-			return
-		}
-
-		bp, _ := client.NewBatchPoints(client.BatchPointsConfig{
-			Database: *influxDB,
-		})
-
-		for _, v := range valueLists {
-
-			tags := map[string]string{}
-
-			if v.Host != "" {
-				tags["host"] = v.Host
-			}
-			if v.PluginInstance != "" {
-				tags["plugin_instance"] = v.PluginInstance
-			}
-			if v.Type != "" {
-				tags["type"] = v.Type
-			}
-			if v.TypeInstance != "" {
-				tags["type_instance"] = v.TypeInstance
-			}
-
-			fields := map[string]interface{}{}
-
-			for n, vv := range v.Values {
-				name := v.DsNames[n]
-				fields[name] = vv
-			}
-
-			s, ms := math.Modf(v.Time)
-			t := time.Unix(int64(s), int64(ms*1e9))
-
-			pt, err := client.NewPoint(
-				v.Plugin,
-				tags,
-				fields,
-				t,
-			)
-			if err != nil {
-				log.Info().
-					Err(err).
-					Msg(err.Error())
-				continue
-			}
-
-			bp.AddPoint(pt)
-		}
-
-		err = c.Write(bp)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-			log.Info().
-				Err(err).
-				Msg(err.Error())
-			return
-		}
-
+		proxyData(ctx, log, c, *influxDB)
 		response := Response{}
 		ctx.JSON(http.StatusOK, response)
 		return
