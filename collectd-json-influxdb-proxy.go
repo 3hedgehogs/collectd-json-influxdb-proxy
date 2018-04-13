@@ -177,7 +177,13 @@ func main() {
 		router.Use(reqLogger(log))
 	}
 
+	rCounter := 1
+	requestCounter := stdExpvar.NewInt("requestcounter")
 	router.POST("/", func(ctx *gin.Context) {
+		rCounter++
+		if *debugserver {
+			requestCounter.Set(int64(rCounter))
+		}
 		proxyData(ctx, log, c, *influxDB)
 		response := Response{}
 		ctx.JSON(http.StatusOK, response)
