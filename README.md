@@ -4,7 +4,7 @@
 [![Build Status](https://secure.travis-ci.org/dex4er/collectd-json-influxdb-proxy.svg)](http://travis-ci.org/dex4er/collectd-json-influxdb-proxy)
 <!-- markdownlint-enable MD013 -->
 
-Translate collectd JSON HTTP request to Influx Data line protocol
+Translate collectd JSON HTTP requests to Influx Data line protocol
 
 ## Requirements
 
@@ -33,7 +33,7 @@ go build .
 ## Running
 
 ```console
-./collectd-json-influxdb-proxy
+./collectd-json-influxdb-proxy --debug-vars --log-requests
 ```
 
 ## Example request
@@ -42,6 +42,7 @@ go build .
 
 ```console
 curl -H "Content-Type: application/json" -X POST -d '[{"values":  [1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance": "0","type":"cpu", "type_instance":"idle"}]' http://localhost:5826/
+
 curl http://localhost:5826/debug/vars
 ```
 
