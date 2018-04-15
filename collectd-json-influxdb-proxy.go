@@ -168,10 +168,10 @@ func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB s
 
 func main() {
 	addr := flag.String("address", serverAddr, "server address")
-	debugserver := flag.Bool("expvar_server", false, "start server for exposer variables")
-	logRequests := flag.Bool("logrequests", false, "logging every request to the server")
-	influxURL := flag.String("influxurl", influxURLdefault, "Influx URL")
-	influxDB := flag.String("influxdb", influxDBdefault, "Influx database")
+	debugVars := flag.Bool("debug-vars", false, "start server for exposer variables")
+	logRequests := flag.Bool("log-requests", false, "logging every request to the server")
+	influxURL := flag.String("influx-url", influxURLdefault, "Influx URL")
+	influxDatabase := flag.String("influx-database", influxDBdefault, "Influx database")
 
 	flag.Parse()
 
@@ -194,20 +194,20 @@ func main() {
 		router.Use(logRequest(log))
 	}
 
-	rCounter := 1
-	requestCounter := stdExpvar.NewInt("requestcounter")
+	requestsCounter := 1
+	requestsCounterVar := stdExpvar.NewInt("requests.counter")
 	router.POST("/", func(ctx *gin.Context) {
-		rCounter++
-		if *debugserver {
-			requestCounter.Set(int64(rCounter))
+		requestsCounter++
+		if *debugVars {
+			requestsCounterVar.Set(int64(requestsCounter))
 		}
-		proxyData(ctx, log, c, *influxDB)
+		proxyData(ctx, log, c, *influxDatabase)
 		response := Response{}
 		ctx.JSON(http.StatusOK, response)
 		return
 	})
 
-	if *debugserver {
+	if *debugVars {
 		numGo := stdExpvar.NewInt("runtime.goroutines")
 		router.GET("/debug/vars", expvar.Handler())
 		go func() {
