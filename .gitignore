@@ -1,8 +1,9 @@
 /collectd-json-influxdb-proxy
 
+/_vendor-*/
 /vendor/
 
-/glide.lock
+/Gopkg.lock
 
 .vscode
 .vstags

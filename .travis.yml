@@ -3,7 +3,7 @@ language: go
 go:
   - 1.9.x
 
-go_import_path: github.com/3hedgehogs/collectd-json-influxdb-proxy
+go_import_path: github.com/dex4er/collectd-json-influxdb-proxy
 
 install:
   - go get github.com/golang/lint/golint
