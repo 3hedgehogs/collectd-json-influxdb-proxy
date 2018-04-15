@@ -16,12 +16,16 @@ import (
 
 	"github.com/gin-contrib/expvar"
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog"
 
 	client "github.com/influxdata/influxdb/client/v2"
+
+	"github.com/rs/zerolog"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 const (
+	appName          = "collectd-json-influxdb-proxy"
 	influxDBdefault  = "collectd"
 	influxURLdefault = "http://localhost:8086/"
 	serverAddr       = ":5826"
@@ -45,7 +49,24 @@ type ValueLists []struct {
 type Response struct {
 }
 
-func reqLogger(log zerolog.Logger) gin.HandlerFunc {
+func createLogger() zerolog.Logger {
+	host, _ := os.Hostname()
+
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		return zerolog.New(os.Stdout).With().
+			Timestamp().
+			Logger().
+			Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+
+	return zerolog.New(os.Stdout).With().
+		Timestamp().
+		Str("app", appName).
+		Str("host", host).
+		Logger()
+}
+
+func logRequest(log zerolog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		t := time.Now()
 
@@ -58,24 +79,30 @@ func reqLogger(log zerolog.Logger) gin.HandlerFunc {
 		statusCode := c.Writer.Status()
 		r := c.Request
 
-		log.Info().
+		errors := c.Errors
+
+		event := log.Info().
 			Str("method", method).
 			Str("url", r.URL.String()).
 			Int("status", statusCode).
 			Int64("size", r.ContentLength).
 			Str("ip", clientIP).
-			Dur("latency", latency).
-			Msgf("%s", c.Errors.String())
+			Dur("latency", latency)
+
+		if errors != nil {
+			event.Str("error", errors.String())
+		}
+
+		event.Msg("Request")
 	}
 }
 
 func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB string) (b client.BatchPoints, e error) {
-
 	var valueLists ValueLists
 	err := ctx.ShouldBindJSON(&valueLists)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
-		log.Info().
+		log.Error().
 			Err(err).
 			Msg(err.Error())
 		return nil, err
@@ -86,7 +113,6 @@ func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB s
 	})
 
 	for _, v := range valueLists {
-
 		tags := map[string]string{}
 
 		if v.Host != "" {
@@ -119,7 +145,7 @@ func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB s
 			t,
 		)
 		if err != nil {
-			log.Info().
+			log.Error().
 				Err(err).
 				Msg(err.Error())
 			continue
@@ -131,7 +157,7 @@ func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB s
 	err = c.Write(bp)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"Error": err.Error()})
-		log.Info().
+		log.Error().
 			Err(err).
 			Msg(err.Error())
 		return bp, err
@@ -141,32 +167,23 @@ func proxyData(ctx *gin.Context, log zerolog.Logger, c client.Client, influxDB s
 }
 
 func main() {
-
-	addr := flag.String("address", serverAddr,
-		"server address")
-	debugserver := flag.Bool("expvar_server", false,
-		"start server for exposer variables")
-	logRequests := flag.Bool("logrequests", false,
-		"logging every request to the server")
-	influxURL := flag.String("influxurl", influxURLdefault,
-		"Influx URL")
-	influxDB := flag.String("influxdb", influxDBdefault,
-		"Influx DB")
+	addr := flag.String("address", serverAddr, "server address")
+	debugserver := flag.Bool("expvar_server", false, "start server for exposer variables")
+	logRequests := flag.Bool("logrequests", false, "logging every request to the server")
+	influxURL := flag.String("influxurl", influxURLdefault, "Influx URL")
+	influxDB := flag.String("influxdb", influxDBdefault, "Influx database")
 
 	flag.Parse()
 
-	host, _ := os.Hostname()
-	log := zerolog.New(os.Stdout).With().
-		Timestamp().
-		Str("app", "collectd-json-influxdb-proxy").
-		Str("host", host).
-		Logger()
+	log := createLogger()
 
 	c, err := client.NewHTTPClient(client.HTTPConfig{
 		Addr: *influxURL,
 	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error creating InfluxDB Client")
+	} else {
+		log.Info().Str("url", *influxURL).Msg("Connecting to InfluxDB")
 	}
 	defer c.Close()
 
@@ -174,7 +191,7 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	if *logRequests {
-		router.Use(reqLogger(log))
+		router.Use(logRequest(log))
 	}
 
 	rCounter := 1
@@ -218,23 +235,21 @@ func main() {
 	signal.Notify(quit, os.Interrupt, os.Kill, syscall.SIGTERM)
 	go func() {
 		<-quit
-		log.Info().
-			Msg("Server is shutting down.")
+		log.Info().Msg("Server is shutting down")
 		ctx, cancel := stdContext.WithTimeout(stdContext.Background(), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
-			log.Fatal().
-				Err(err).
-				Msg("Cannot gracefully shut down the server")
+			log.Fatal().Err(err).Msg("Cannot gracefully shut down the server")
 		}
 		close(done)
 	}()
 
 	daemon.SdNotify(false, "READY=1")
+
+	log.Info().Str("addr", *addr).Msg("Server is listening")
+
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal().
-			Err(err).
-			Msg("Start server listener")
+		log.Fatal().Err(err).Msg("Start server listener")
 	}
 
 	// Wait for existing connections before exiting.
