@@ -194,7 +194,7 @@ func main() {
 		router.Use(logRequest(log))
 	}
 
-	requestsCounter := 1
+	requestsCounter := 0
 	requestsCounterVar := stdExpvar.NewInt("requests.counter")
 	router.POST("/", func(ctx *gin.Context) {
 		requestsCounter++

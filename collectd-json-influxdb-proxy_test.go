@@ -1,171 +1,155 @@
 package main
 
-import "bytes"
-import "fmt"
-import "os"
-import "reflect"
-import "testing"
-import "net/http/httptest"
-import "net/http"
-import "github.com/gin-gonic/gin"
-import "github.com/rs/zerolog"
-import "github.com/stretchr/testify/assert"
-import client "github.com/influxdata/influxdb/client/v2"
+import (
+	"bytes"
+	"github.com/gin-gonic/gin"
+	client "github.com/influxdata/influxdb/client/v2"
+	"github.com/rs/zerolog"
+	. "github.com/smartystreets/goconvey/convey"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+)
 
-func TestProxyData(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestJSONConvertion(t *testing.T) {
+	Convey("Given a http request with GIN context with corrcet JSON data", t, func() {
 
-	//url := "http://localhost:5826/"
-	url := "/dev/null"
-	fmt.Println("URL: ", url)
+		gin.SetMode(gin.TestMode)
+		url := "http://localhost:5826/"
 
-	var jsonStr = []byte(`[{"values":[1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
+		var jsonStr = []byte(`[{"values":[1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	c.Request.Header.Set("Content-Type", "application/json")
-	fmt.Println("recorder: ", rec.Code)
-	res := rec.Result()
-	fmt.Println("results: ", res.StatusCode)
-	assert.Equal(t, 200, res.StatusCode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		c.Request.Header.Set("Content-Type", "application/json")
+		res := rec.Result()
+		So(res.StatusCode, ShouldEqual, 200)
 
-	influxURL := "http://localhost:8086/"
-	influxDB := "collectd"
+		influxURL := "http://localhost:8086/"
+		influxDB := "collectd"
 
-	ci, _ := client.NewHTTPClient(client.HTTPConfig{
-		Addr: influxURL,
+		ci, _ := client.NewHTTPClient(client.HTTPConfig{
+			Addr: influxURL,
+		})
+
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+		log := zerolog.New(os.Stdout).With().
+			Timestamp().
+			Str("app", "collectd-json-influxdb-proxx_test").
+			Logger()
+
+		bp, _ := proxyData(c, log, ci, influxDB)
+
+		Convey("When JSON data is correct", func() {
+			So(bp, ShouldNotBeNil)
+			pt := bp.Points()[0]
+			Convey("The tags are correct", func() {
+				tags := map[string]string{"host": "leeloo.octo.it", "plugin_instance": "0", "type": "cpu", "type_instance": "idle"}
+				So(tags, ShouldResemble, pt.Tags())
+			})
+			Convey("The rest fields are correct", func() {
+				fields := map[string]interface{}{"value": 1.901474177e+09}
+				pfields, _ := pt.Fields()
+				So(fields, ShouldResemble, pfields)
+
+				So("cpu", ShouldEqual, pt.Name())
+				So("collectd", ShouldEqual, bp.Database())
+			})
+		})
 	})
 
-	log := zerolog.New(os.Stdout).With().
-		Timestamp().
-		Str("app", "collectd-json-influxdb-proxx_test").
-		Logger()
+	Convey("Given a http request with GIN context but bad JSON data structure", t, func() {
 
-	bp, _ := proxyData(c, log, ci, influxDB)
-	assert.NotNil(t, bp)
-	if bp == nil {
-		return
-	}
+		gin.SetMode(gin.TestMode)
+		url := "http://localhost:5826/"
 
-	fmt.Printf("BP: %+v\n", bp)
-	fmt.Printf("BP.points: %+v\n", bp.Points())
-	/* expect tags:  */
-	tags := map[string]string{"host": "leeloo.octo.it", "plugin_instance": "0", "type": "cpu", "type_instance": "idle"}
-	pt := bp.Points()[0]
-	assert.Equal(t, true, reflect.DeepEqual(tags, pt.Tags()))
-	/*
-		if !reflect.DeepEqual(tags, pt.Tags()) {
-			t.Errorf("Error, got %v, expected %v",
-				pt.Tags(), tags)
-		}
-	*/
-	/* expect fields */
-	fields := map[string]interface{}{"value": 1.901474177e+09}
-	pfields, _ := pt.Fields()
-	assert.Equal(t, true, reflect.DeepEqual(fields, pfields))
-	/*
-			if !reflect.DeepEqual(fields, pfields) {
-		   		t.Errorf("Error, got %v, expected %v",
-		   			pfields, fields)
-		   	}
-	*/
-	assert.Equal(t, "cpu", pt.Name())
-	assert.Equal(t, "collectd", bp.Database())
-}
+		var jsonStr = []byte(`[{values":[1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
 
-func TestProxyDataNegativData1(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		c.Request.Header.Set("Content-Type", "application/json")
+		res := rec.Result()
+		So(res.StatusCode, ShouldEqual, 200)
 
-	//url := "http://localhost:5826/"
-	url := "/dev/null"
-	fmt.Println("URL: ", url)
+		influxURL := "http://localhost:8086/"
+		influxDB := "collectd"
 
-	var jsonStr = []byte(`[{values":[1901474177],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
+		ci, _ := client.NewHTTPClient(client.HTTPConfig{
+			Addr: influxURL,
+		})
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	c.Request.Header.Set("Content-Type", "application/json")
-	res := rec.Result()
-	assert.Equal(t, 200, res.StatusCode)
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+		log := zerolog.New(os.Stdout).With().
+			Timestamp().
+			Str("app", "collectd-json-influxdb-proxx_test").
+			Logger()
 
-	influxURL := "http://localhost:8086/"
-	influxDB := "collectd"
-
-	ci, _ := client.NewHTTPClient(client.HTTPConfig{
-		Addr: influxURL,
+		bp, _ := proxyData(c, log, ci, influxDB)
+		So(bp, ShouldBeNil)
 	})
 
-	log := zerolog.New(os.Stdout).With().
-		Timestamp().
-		Str("app", "collectd-json-influxdb-proxx_test").
-		Logger()
+	Convey("Given a http request with GIN context but bad JSON data, cannot unmarshal to go structure (string => float64)", t, func() {
 
-	bp, _ := proxyData(c, log, ci, influxDB)
-	assert.Nil(t, bp)
-}
+		gin.SetMode(gin.TestMode)
+		url := "http://localhost:5826/"
 
-func TestProxyDataNegativData2(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+		var jsonStr = []byte(`[{"values":["a1901474177"],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
 
-	//url := "http://localhost:5826/"
-	url := "/dev/null"
-	fmt.Println("URL: ", url)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		c.Request.Header.Set("Content-Type", "application/json")
+		res := rec.Result()
+		So(res.StatusCode, ShouldEqual, 200)
 
-	var jsonStr = []byte(`[{"values":["a1901474177"],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
+		influxURL := "http://localhost:8086/"
+		influxDB := "collectd"
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	c.Request.Header.Set("Content-Type", "application/json")
-	res := rec.Result()
-	assert.Equal(t, 200, res.StatusCode)
+		ci, _ := client.NewHTTPClient(client.HTTPConfig{
+			Addr: influxURL,
+		})
 
-	influxURL := "http://localhost:8086/"
-	influxDB := "collectd"
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+		log := zerolog.New(os.Stdout).With().
+			Timestamp().
+			Str("app", "collectd-json-influxdb-proxx_test").
+			Logger()
 
-	ci, _ := client.NewHTTPClient(client.HTTPConfig{
-		Addr: influxURL,
+		bp, _ := proxyData(c, log, ci, influxDB)
+		So(bp, ShouldBeNil)
 	})
 
-	log := zerolog.New(os.Stdout).With().
-		Timestamp().
-		Str("app", "collectd-json-influxdb-proxx_test").
-		Logger()
+	Convey("Given a http request with GIN context but bad JSON data, cannot unmarshal to go structure (number => string)", t, func() {
 
-	bp, _ := proxyData(c, log, ci, influxDB)
-	assert.Nil(t, bp)
-}
+		gin.SetMode(gin.TestMode)
+		url := "http://localhost:5826/"
 
-func TestProxyDataNegativData3(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+		var jsonStr = []byte(`[{"dstypes":[100]}]`)
 
-	//url := "http://localhost:5826/"
-	url := "/dev/null"
-	fmt.Println("URL: ", url)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		c.Request.Header.Set("Content-Type", "application/json")
+		res := rec.Result()
+		So(res.StatusCode, ShouldEqual, 200)
 
-	var jsonStr = []byte(`[{"dstypes":[100]}]`)
+		influxURL := "http://localhost:8086/"
+		influxDB := "collectd"
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	c.Request.Header.Set("Content-Type", "application/json")
-	res := rec.Result()
-	assert.Equal(t, 200, res.StatusCode)
+		ci, _ := client.NewHTTPClient(client.HTTPConfig{
+			Addr: influxURL,
+		})
 
-	influxURL := "http://localhost:8086/"
-	influxDB := "collectd"
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+		log := zerolog.New(os.Stdout).With().
+			Timestamp().
+			Str("app", "collectd-json-influxdb-proxx_test").
+			Logger()
 
-	ci, _ := client.NewHTTPClient(client.HTTPConfig{
-		Addr: influxURL,
+		bp, _ := proxyData(c, log, ci, influxDB)
+		So(bp, ShouldBeNil)
 	})
-
-	log := zerolog.New(os.Stdout).With().
-		Timestamp().
-		Str("app", "collectd-json-influxdb-proxx_test").
-		Logger()
-
-	bp, _ := proxyData(c, log, ci, influxDB)
-	assert.Nil(t, bp)
 }

@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=notify
-ExecStart=/opt/collectd-json-influxdb-proxy/collectd-json-influxdb-proxy -expvar_server -address :5826
+ExecStart=/opt/collectd-json-influxdb-proxy/collectd-json-influxdb-proxy -debug-vars -address :5826
 
 [Install]
 WantedBy=multi-user.target
