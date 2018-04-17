@@ -13,7 +13,7 @@ import (
 )
 
 func TestJSONConvertion(t *testing.T) {
-	Convey("Given a http request with GIN context with corrcet JSON data", t, func() {
+	Convey("Given a http request with GIN context with correct JSON data", t, func() {
 
 		gin.SetMode(gin.TestMode)
 		url := "http://localhost:5826/"
@@ -91,12 +91,12 @@ func TestJSONConvertion(t *testing.T) {
 		So(bp, ShouldBeNil)
 	})
 
-	Convey("Given a http request with GIN context but bad JSON data, cannot unmarshal to go structure (string => float64)", t, func() {
+	Convey("Given a http request with GIN context but bad JSON data, cannot unmarshal to go structure", t, func() {
 
 		gin.SetMode(gin.TestMode)
 		url := "http://localhost:5826/"
 
-		var jsonStr = []byte(`[{"values":["a1901474177"],"dstypes":["counter"],"dsnames":["value"],"time":1280959128,"interval":10,"host":"leeloo.octo.it","plugin":"cpu","plugin_instance":"0","type":"cpu","type_instance":"idle"}]`)
+		var jsonStr = []byte(`[{"values":["a1901474177"],"dstypes":[1],"dsnames":"value","time":"a1280959128","interval":"10a","host":0,"plugin":[2],"plugin_instance":0,"type":["cpu"],"type_instance":1}]`)
 
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
@@ -112,38 +112,7 @@ func TestJSONConvertion(t *testing.T) {
 			Addr: influxURL,
 		})
 
-		zerolog.SetGlobalLevel(zerolog.Disabled)
-		log := zerolog.New(os.Stdout).With().
-			Timestamp().
-			Str("app", "collectd-json-influxdb-proxx_test").
-			Logger()
-
-		bp, _ := proxyData(c, log, ci, influxDB)
-		So(bp, ShouldBeNil)
-	})
-
-	Convey("Given a http request with GIN context but bad JSON data, cannot unmarshal to go structure (number => string)", t, func() {
-
-		gin.SetMode(gin.TestMode)
-		url := "http://localhost:5826/"
-
-		var jsonStr = []byte(`[{"dstypes":[100]}]`)
-
-		rec := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(rec)
-		c.Request, _ = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-		c.Request.Header.Set("Content-Type", "application/json")
-		res := rec.Result()
-		So(res.StatusCode, ShouldEqual, 200)
-
-		influxURL := "http://localhost:8086/"
-		influxDB := "collectd"
-
-		ci, _ := client.NewHTTPClient(client.HTTPConfig{
-			Addr: influxURL,
-		})
-
-		zerolog.SetGlobalLevel(zerolog.Disabled)
+		//zerolog.SetGlobalLevel(zerolog.InfoLevel)
 		log := zerolog.New(os.Stdout).With().
 			Timestamp().
 			Str("app", "collectd-json-influxdb-proxx_test").
